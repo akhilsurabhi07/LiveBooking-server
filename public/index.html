@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Bookings Viewer</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .status {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .status.connected {
+            background: rgba(76, 175, 80, 0.2);
+            border-color: rgba(76, 175, 80, 0.3);
+        }
+
+        .status.disconnected {
+            background: rgba(244, 67, 54, 0.2);
+            border-color: rgba(244, 67, 54, 0.3);
+        }
+
+        .bookings-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .booking-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        .booking-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .booking-card.new {
+            animation: highlight 1s ease-out;
+        }
+
+        .venue-name {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .booking-details {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .party-size {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .time {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .stats {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 20px;
+            color: white;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .stats h3 {
+            margin-bottom: 10px;
+            font-size: 1.2rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .stat-number {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes highlight {
+            0% {
+                background: rgba(255, 255, 255, 0.95);
+            }
+            50% {
+                background: rgba(76, 175, 80, 0.2);
+            }
+            100% {
+                background: rgba(255, 255, 255, 0.95);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .bookings-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .footer {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 30px;
+            text-align: center;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .footer-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .copyright {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .contact-info {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .contact-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            opacity: 0.9;
+            transition: opacity 0.3s ease;
+        }
+
+        .contact-item:hover {
+            opacity: 1;
+        }
+
+        .contact-item a {
+            color: white;
+            text-decoration: none;
+        }
+
+        .contact-item a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .footer-content {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            .contact-info {
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎉 Live Bookings Viewer</h1>
+            <p>Real-time restaurant and venue bookings</p>
+        </div>
+
+        <div class="status" id="status">
+            <span id="statusText">Connecting...</span>
+        </div>
+
+        <div class="stats">
+            <h3>📊 Live Statistics</h3>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-number" id="totalBookings">0</div>
+                    <div class="stat-label">Total Bookings</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="activeVenues">0</div>
+                    <div class="stat-label">Active Venues</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="avgPartySize">0</div>
+                    <div class="stat-label">Avg Party Size</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="lastUpdate">-</div>
+                    <div class="stat-label">Last Update</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bookings-container" id="bookingsContainer">
+            <!-- Bookings will be dynamically added here -->
+        </div>
+
+        <div class="footer">
+            <div class="footer-content">
+                <div class="copyright">
+                    © 2024 AKhilSurabhi. All Rights Reserved.
+                </div>
+                <div class="contact-info">
+                    <div class="contact-item">
+                        📞 <a href="tel:+917981325207">+91 7981325207</a>
+                    </div>
+                    <div class="contact-item">
+                        ✉️ <a href="mailto:akhilsurabhi07@gmail.com">akhilsurabhi07@gmail.com</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const bookingsContainer = document.getElementById('bookingsContainer');
+        const statusElement = document.getElementById('status');
+        const statusText = document.getElementById('statusText');
+        const totalBookingsElement = document.getElementById('totalBookings');
+        const activeVenuesElement = document.getElementById('activeVenues');
+        const avgPartySizeElement = document.getElementById('avgPartySize');
+        const lastUpdateElement = document.getElementById('lastUpdate');
+
+        let bookings = [];
+        let venueSet = new Set();
+
+        // Connection status handling
+        socket.on('connect', () => {
+            statusElement.className = 'status connected';
+            statusText.textContent = '🟢 Connected - Receiving live updates';
+        });
+
+        socket.on('disconnect', () => {
+            statusElement.className = 'status disconnected';
+            statusText.textContent = '🔴 Disconnected - Trying to reconnect...';
+        });
+
+        // Receive existing bookings when connecting
+        socket.on('existingBookings', (existingBookings) => {
+            bookings = existingBookings;
+            updateDisplay();
+        });
+
+        // Receive new booking
+        socket.on('newBooking', (newBooking) => {
+            bookings.push(newBooking);
+            updateDisplay();
+            
+            // Add highlight animation to the new booking
+            const newCard = document.querySelector('.booking-card:last-child');
+            if (newCard) {
+                newCard.classList.add('new');
+                setTimeout(() => {
+                    newCard.classList.remove('new');
+                }, 1000);
+            }
+        });
+
+        function updateDisplay() {
+            // Update bookings display
+            bookingsContainer.innerHTML = '';
+            
+            // Show most recent bookings first
+            const recentBookings = [...bookings].reverse();
+            
+            recentBookings.forEach(booking => {
+                const bookingCard = document.createElement('div');
+                bookingCard.className = 'booking-card';
+                bookingCard.innerHTML = `
+                    <div class="venue-name">${booking.venueName}</div>
+                    <div class="booking-details">
+                        <div class="party-size">👥 ${booking.partySize} ${booking.partySize === 1 ? 'person' : 'people'}</div>
+                        <div class="time">🕐 ${booking.time}</div>
+                    </div>
+                `;
+                bookingsContainer.appendChild(bookingCard);
+            });
+
+            // Update statistics
+            updateStats();
+        }
+
+        function updateStats() {
+            totalBookingsElement.textContent = bookings.length;
+            
+            // Count unique venues
+            venueSet.clear();
+            bookings.forEach(booking => venueSet.add(booking.venueName));
+            activeVenuesElement.textContent = venueSet.size;
+            
+            // Calculate average party size
+            if (bookings.length > 0) {
+                const totalPartySize = bookings.reduce((sum, booking) => sum + booking.partySize, 0);
+                const avgSize = (totalPartySize / bookings.length).toFixed(1);
+                avgPartySizeElement.textContent = avgSize;
+            } else {
+                avgPartySizeElement.textContent = '0';
+            }
+            
+            // Update last update time
+            if (bookings.length > 0) {
+                const lastBooking = bookings[bookings.length - 1];
+                lastUpdateElement.textContent = lastBooking.time;
+            }
+        }
+    </script>
+</body>
+</html> 
